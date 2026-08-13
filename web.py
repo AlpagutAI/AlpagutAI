@@ -760,205 +760,93 @@ class Handler(BaseHTTPRequestHandler):
         )
 
 
-    def do_POST(self):
+  def do_POST(self):
 
         if self.path != "/chat":
-
             self.send_response(404)
-
             self.end_headers()
-
             return
 
-
         try:
+            length = int(
+                self.headers.get("Content-Length", 0)
+            )
 
-            length =
-                int(
-                    self.headers.get(
-                        "Content-Length",
-                        0
-                    )
-                )
+            body = self.rfile.read(length)
 
+            data = json.loads(
+                body.decode("utf-8")
+            )
 
-            body =
-                self.rfile.read(
-                    length
-                )
-
-
-            data =
-                json.loads(
-                    body.decode("utf-8")
-                )
-
-
-            user_message =
-                data.get(
-                    "message",
-                    ""
-                ).strip()
-
+            user_message = data.get(
+                "message",
+                ""
+            ).strip()
 
             if not user_message:
-
-                self.send_json(
-                    {
-                        "error":
-                        "Mesaj boş."
-                    },
-                    400
-                )
-
+                self.send_json({
+                    "error": "Mesaj boş."
+                }, 400)
                 return
 
-
-            # Kullanıcı oturumunu bul
-            session_id = None
-
-            if "Cookie" in self.headers:
-
-                cookie =
-                    cookies.SimpleCookie(
-                        self.headers["Cookie"]
-                    )
-
-                if "ALPAGUT_SESSION" in cookie:
-
-                    session_id =
-                        cookie[
-                            "ALPAGUT_SESSION"
-                        ].value
-
-
-            if not session_id:
-
-                session_id =
-                    str(uuid.uuid4())
-
+            # Kullanıcıya özel oturum
+            session_id = self.get_session()
 
             if session_id not in sessions:
+                sessions[session_id] = []
 
-                sessions[session_id] = {
-                    "response_id": None
-                }
+            # Kullanıcının mesajını hafızaya ekle
+            sessions[session_id].append({
+                "role": "user",
+                "content": user_message
+            })
 
+            # Hafızayı son 20 mesajla sınırla
+            conversation = sessions[session_id][-20:]
 
-            previous_response =
-                sessions[
-                    session_id
-                ]["response_id"]
+            response = client.responses.create(
 
+                model="gpt-4o-mini",
 
-            # OpenAI isteği
-
-            request_data = {
-
-                "model":
-                    "gpt-4o-mini",
-
-                "instructions":
-                    """
+                instructions="""
 Sen Alpağut Yapay Zeka'sın.
 
 Türkçe konuş.
 
-Samimi, doğal,
-yardımsever ve anlaşılır ol.
+Samimi, yardımsever ve doğal ol.
 
-Kullanıcıyla normal bir insanla
-konuşuyormuş gibi iletişim kur.
+Kullanıcıyla sohbet ederken önceki
+mesajları dikkate al.
 
-Kullanıcının önceki mesajlarını
-dikkate al.
+Kullanıcının daha önce söylediği
+isim, tercih ve sohbet bilgilerini
+aynı oturum içerisinde hatırla.
 
-Gereksiz yere uzun cevap verme.
+Bilmediğin kişisel bilgileri uydurma.
 
-Bilmediğin bir şeyi kesinmiş
-gibi söyleme.
-"""
-            }
+Cevaplarını anlaşılır ve doğal ver.
+""",
 
-
-            if previous_response:
-
-                request_data[
-                    "previous_response_id"
-                ] = previous_response
-
-
-            request_data[
-                "input"
-            ] = user_message
-
-
-            response =
-                client.responses.create(
-                    **request_data
-                )
-
-
-            reply =
-                response.output_text
-
-
-            # Son cevabı hafızada tut
-            sessions[
-                session_id
-            ]["response_id"] =
-                response.id
-
-
-            result =
-                json.dumps(
-                    {
-                        "reply":
-                            reply
-                    },
-                    ensure_ascii=False
-                ).encode("utf-8")
-
-
-            self.send_response(200)
-
-
-            self.send_header(
-                "Content-Type",
-                "application/json; charset=utf-8"
+                input=conversation
             )
 
+            reply = response.output_text
 
-            self.send_header(
-                "Content-Length",
-                str(len(result))
-            )
+            # Yapay zekanın cevabını da hafızaya ekle
+            sessions[session_id].append({
+                "role": "assistant",
+                "content": reply
+            })
 
-
-            self.send_header(
-                "Set-Cookie",
-                f"ALPAGUT_SESSION={session_id}; "
-                "Path=/; HttpOnly; SameSite=Lax"
-            )
-
-
-            self.end_headers()
-
-
-            self.wfile.write(
-                result
-            )
-
+            self.send_json({
+                "reply": reply
+            })
 
         except Exception as e:
 
-            self.send_json(
-                {
-                    "error":
-                        str(e)
-                },
-                500
-            )
+            self.send_json({
+                "error": str(e)
+            }, 500)
 
 
 print("")
