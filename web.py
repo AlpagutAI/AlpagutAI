@@ -10,7 +10,7 @@ api_key = os.getenv("OPENAI_API_KEY")
 
 if not api_key:
     print("OPENAI_API_KEY bulunamadi.")
-    input("Kapatmak icin Enter'a basin...")
+    
     raise SystemExit
 
 client = OpenAI(api_key=api_key)
